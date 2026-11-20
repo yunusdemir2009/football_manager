@@ -30,6 +30,19 @@ def value_of(ca, age):
     return int(round((ca / 100.0) ** 4 * 120_000_000 * f, -4))
 
 
+def load_real_names():
+    p = os.path.join(HERE, 'teams_real.csv')
+    out = {}
+    if os.path.exists(p):
+        with open(p, encoding='utf-8') as f:
+            for r in csv.DictReader(f):
+                out.setdefault(int(r['league_id']), []).append((int(r['rank']), r['name']))
+    return {k: [n for _, n in sorted(v)] for k, v in out.items()}
+
+
+REAL_NAMES = load_real_names()
+
+
 def load_teams_for(league, rng):
     n = int(league['teams'])
     strength = int(league['strength'])
@@ -40,6 +53,13 @@ def load_teams_for(league, rng):
         rows = rows[:n]
         for r in rows:
             names.append(r['name'].strip()); budgets.append(int(r['budget']))
+    elif REAL_NAMES.get(int(league['id'])):
+        for nm in REAL_NAMES[int(league['id'])][:n]:
+            names.append(nm); budgets.append(0)  # butce asagida guce gore uretilir
+        # 0 olan butceleri sirayla doldur
+        base = strength * 6_000_000
+        for i in range(len(budgets)):
+            budgets[i] = int(base * (1.6 - 1.2 * i / max(n - 1, 1)) * rng.uniform(0.9, 1.1))
     # eksikleri uret: yer tutucu isimler (sonradan DB'de degistirilir)
     base = strength * 6_000_000
     while len(names) < n:

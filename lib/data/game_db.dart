@@ -33,6 +33,8 @@ class GameDb {
     db = await openDatabase(path);
     await db.execute('CREATE TABLE IF NOT EXISTS Save('
         'id INTEGER PRIMARY KEY, team_id INTEGER, league_id INTEGER, week INTEGER, season INTEGER)');
+    await db.execute('CREATE TABLE IF NOT EXISTS Lineup('
+        'id INTEGER PRIMARY KEY, formation TEXT, mentality INTEGER, xi TEXT)');
     await db.execute('CREATE TABLE IF NOT EXISTS Fixtures('
         'id INTEGER PRIMARY KEY AUTOINCREMENT, week INTEGER, home INTEGER, away INTEGER, hg INTEGER, ag INTEGER)');
   }
@@ -57,6 +59,11 @@ class GameDb {
 
   Future<Map<String, Object?>?> loadSave() async {
     final r = await db.query('Save', where: 'id = 1');
+    return r.isEmpty ? null : r.first;
+  }
+
+  Future<Map<String, Object?>?> loadLineup() async {
+    final r = await db.query('Lineup', where: 'id = 1');
     return r.isEmpty ? null : r.first;
   }
 

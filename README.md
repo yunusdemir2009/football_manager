@@ -19,5 +19,10 @@ python tools/build_game_db.py --src Small_Database.db --out assets/game.db
 - Yeni lig: `tools/leagues.csv`'ye satır ekleyin.
 - Uygulama DB'yi ilk açılışta asset'ten kopyalar; yeni `game.db` için uygulama verisini silin/yeniden kurun ("Yeni Oyun" da DB'yi asset'ten sıfırlar).
 
+## Oyun
+- Diziliş (6 seçenek), mentalite (defansif/dengeli/hücum), ilk 11 seçimi (sekme: Taktik).
+- Canlı maç: dakika dakika, devre arasında durur; mentalite ve oyuncu değişikliği (5 hak, aynı mevki). Kondisyon düşük oyuncular 50. dakikadan sonra yorulur.
+- Takım isimleri `tools/teams_real.csv` (lig başına güç sırasıyla); değiştirip `build_game_db.py`'yi yeniden çalıştırın.
+
 ## Durum
 Bkz. proje özeti. UEFA kupaları henüz simüle edilmiyor (veride `Competitions` tablosu var).

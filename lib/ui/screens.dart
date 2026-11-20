@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/engine.dart';
 import '../core/game_state.dart';
+import '../core/match.dart';
 import '../data/game_db.dart';
+import 'live_match.dart';
 
 String money(int v) {
   final a = v.abs();
@@ -146,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = [_matchTab(), _tableTab(), _squadTab(), _transferTab(), _financeTab()];
+    final pages = [_matchTab(), _tableTab(), _tacticTab(), _transferTab(), _financeTab()];
     return Scaffold(
       appBar: AppBar(
         title: Text('${g.myTeam.name} • Sezon ${g.season}'),
@@ -159,12 +161,23 @@ class _HomeScreenState extends State<HomeScreen> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.sports_soccer), label: 'Maç'),
           NavigationDestination(icon: Icon(Icons.leaderboard), label: 'Tablo'),
-          NavigationDestination(icon: Icon(Icons.groups), label: 'Kadro'),
+          NavigationDestination(icon: Icon(Icons.dashboard_customize), label: 'Taktik'),
           NavigationDestination(icon: Icon(Icons.swap_horiz), label: 'Transfer'),
           NavigationDestination(icon: Icon(Icons.account_balance_wallet), label: 'Finans'),
         ],
       ),
     );
+  }
+
+  Future<void> _playLive() async {
+    final session = g.beginWeek();
+    if (session == null) {
+      await _run(g.finishWeek);
+      return;
+    }
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => LiveMatchScreen(game: g, session: session)));
+    if (mounted) setState(() {});
   }
 
   // ---- Mac ----
@@ -202,9 +215,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       const SizedBox(height: 12),
       FilledButton.icon(
-        onPressed: busy ? null : () => _run(g.playWeek),
+        onPressed: busy ? null : _playLive,
         icon: const Icon(Icons.play_arrow),
-        label: const Text('Haftayı Oyna'),
+        label: Text(next == null ? 'Haftayı Geç' : 'Maça Çık (canlı)'),
+      ),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        onPressed: busy ? null : () => _run(g.quickPlayWeek),
+        icon: const Icon(Icons.fast_forward),
+        label: const Text('Hızlı Simüle'),
       ),
       const SizedBox(height: 20),
       if (g.lastResults.isNotEmpty) ...[
@@ -245,32 +264,103 @@ class _HomeScreenState extends State<HomeScreen> {
     ]);
   }
 
-  // ---- Kadro ----
-  Widget _squadTab() {
-    final squad = g.squad(g.teamId);
-    final xi = bestEleven(squad).map((p) => p.id).toSet();
-    squad.sort((a, b) {
-      const order = {'GK': 0, 'DEF': 1, 'MID': 2, 'FWD': 3};
-      final c = (order[a.grp] ?? 9).compareTo(order[b.grp] ?? 9);
-      return c != 0 ? c : b.ca.compareTo(a.ca);
-    });
-    return ListView.builder(
-      itemCount: squad.length,
-      itemBuilder: (c, i) {
-        final p = squad[i];
-        return ListTile(
+  // ---- Taktik / Kadro ----
+  Future<void> _pickStarter(Player out) async {
+    final xiIds = g.myXI.map((p) => p.id).toSet();
+    final cands = g.squad(g.teamId).where((p) => p.grp == out.grp && !xiIds.contains(p.id)).toList()
+      ..sort((a, b) => b.ca.compareTo(a.ca));
+    final picked = await showModalBottomSheet<Player>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(shrinkWrap: true, children: [
+          ListTile(title: Text('${out.name} yerine'), subtitle: const Text('Aynı mevkiden bir oyuncu seçin')),
+          if (cands.isEmpty) const ListTile(title: Text('Başka oyuncu yok')),
+          for (final p in cands)
+            ListTile(
+              dense: true,
+              title: Text(p.name),
+              subtitle: Text('${p.position} • ${p.age} yaş • Kond. ${p.stamina}'),
+              trailing: Text('${p.ca}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              onTap: () => Navigator.of(ctx).pop(p),
+            ),
+        ]),
+      ),
+    );
+    if (picked == null) return;
+    await g.swapStarter(out, picked);
+    if (mounted) setState(() {});
+  }
+
+  Widget _tacticTab() {
+    final xi = g.myXI;
+    final xiIds = xi.map((p) => p.id).toSet();
+    final bench = g.myBench;
+    final benchIds = bench.map((p) => p.id).toSet();
+    final reserves = g.squad(g.teamId).where((p) => !xiIds.contains(p.id) && !benchIds.contains(p.id)).toList()
+      ..sort((a, b) => b.ca.compareTo(a.ca));
+    const order = {'GK': 0, 'DEF': 1, 'MID': 2, 'FWD': 3};
+    final xiSorted = [...xi]..sort((a, b) => (order[a.grp] ?? 9).compareTo(order[b.grp] ?? 9));
+
+    Widget row(Player p, {bool tappable = false}) => ListTile(
           dense: true,
           leading: CircleAvatar(radius: 16, child: Text(p.grp, style: const TextStyle(fontSize: 10))),
           title: Text(p.name),
-          subtitle: Text('${p.position} • ${p.age} yaş • ${money(p.value)}'),
-          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (xi.contains(p.id)) const Icon(Icons.star, size: 16),
-            const SizedBox(width: 6),
-            Text('${p.ca}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ]),
+          subtitle: Text('${p.position} • ${p.age} yaş • Kond. ${p.stamina}'),
+          trailing: Text('${p.ca}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          onTap: tappable ? () => _pickStarter(p) : null,
         );
-      },
-    );
+
+    return ListView(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: Row(children: [
+          const Text('Diziliş: '),
+          DropdownButton<String>(
+            value: g.formation.name,
+            items: [for (final f in kFormations) DropdownMenuItem(value: f.name, child: Text(f.name))],
+            onChanged: (v) async {
+              if (v == null) return;
+              await g.setFormation(formationByName(v));
+              if (mounted) setState(() {});
+            },
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: () async {
+              await g.autoPickLineup();
+              if (mounted) setState(() {});
+            },
+            child: const Text('Otomatik seç'),
+          ),
+        ]),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SegmentedButton<Mentality>(
+          segments: [for (final m in Mentality.values) ButtonSegment(value: m, label: Text(m.label))],
+          selected: {g.mentality},
+          onSelectionChanged: (v) async {
+            await g.setMentality(v.first);
+            if (mounted) setState(() {});
+          },
+        ),
+      ),
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: Text('İlk 11 (değiştirmek için oyuncuya dokunun)', style: TextStyle(fontWeight: FontWeight.bold)),
+      ),
+      for (final p in xiSorted) row(p, tappable: true),
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: Text('Yedekler', style: TextStyle(fontWeight: FontWeight.bold)),
+      ),
+      for (final p in bench) row(p),
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: Text('Kadro dışı', style: TextStyle(fontWeight: FontWeight.bold)),
+      ),
+      for (final p in reserves) row(p),
+    ]);
   }
 
   // ---- Transfer ----

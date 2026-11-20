@@ -75,61 +75,6 @@ class Standing {
   int get gd => gf - ga;
 }
 
-class Rating {
-  final double att, def;
-  const Rating(this.att, this.def);
-}
-
-const double kBaseGoals = 1.30;
-const double kHomeBoost = 1.12;
-const double kAwayBoost = 0.90;
-const double kSpread = 5.0;
-
-double _meanTop(List<Player> list, int n) {
-  if (list.isEmpty) return 30;
-  final s = [...list]..sort((a, b) => b.ca.compareTo(a.ca));
-  final t = s.take(n).toList();
-  return t.fold<int>(0, (a, p) => a + p.ca) / t.length;
-}
-
-/// 4-4-2 ilk 11'e gore hucum/savunma puani.
-Rating rate(List<Player> squad) {
-  List<Player> g(String k) => squad.where((p) => p.grp == k).toList();
-  final gk = _meanTop(g('GK'), 1);
-  final d = _meanTop(g('DEF'), 4);
-  final m = _meanTop(g('MID'), 4);
-  final f = _meanTop(g('FWD'), 2);
-  return Rating((2 * f + m) / 3, (2 * d + gk) / 3);
-}
-
-/// Ilk 11 (4-4-2), oyuncu ekrani icin.
-List<Player> bestEleven(List<Player> squad) {
-  List<Player> top(String k, int n) {
-    final s = squad.where((p) => p.grp == k).toList()..sort((a, b) => b.ca.compareTo(a.ca));
-    return s.take(n).toList();
-  }
-
-  return [...top('GK', 1), ...top('DEF', 4), ...top('MID', 4), ...top('FWD', 2)];
-}
-
-int _poisson(Random r, double lambda) {
-  final l = exp(-lambda);
-  int k = 0;
-  double p = 1;
-  do {
-    k++;
-    p *= r.nextDouble();
-  } while (p > l);
-  return k - 1;
-}
-
-/// avgAtt/avgDef: lig ortalamasi (puanlar ligin ortalamasina gore normallestirilir).
-(int, int) simulateMatch(Random r, Rating home, Rating away, double avgAtt, double avgDef) {
-  final lh = kBaseGoals * kHomeBoost * exp(((home.att - avgAtt) - (away.def - avgDef)) / kSpread);
-  final la = kBaseGoals * kAwayBoost * exp(((away.att - avgAtt) - (home.def - avgDef)) / kSpread);
-  return (_poisson(r, lh), _poisson(r, la));
-}
-
 /// Cift devreli fikstur (circle method). Tek sayida takimda bay gecer.
 List<Fixture> buildFixtures(List<int> teamIds, Random rng) {
   final ids = [...teamIds]..shuffle(rng);
