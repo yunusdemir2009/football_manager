@@ -1,0 +1,33 @@
+id,country,name,teams,strength
+1,İngiltere,Premier League,20,10
+2,İspanya,La Liga,20,10
+3,İtalya,Serie A,20,9
+4,Almanya,Bundesliga,18,9
+5,Fransa,Ligue 1,18,8
+6,Portekiz,Primeira Liga,18,7
+7,Hollanda,Eredivisie,18,7
+8,Türkiye,Süper Lig,19,7
+9,Belçika,Pro League,16,6
+10,İskoçya,Premiership,12,5
+11,Avusturya,Bundesliga (AT),12,5
+12,İsviçre,Super League,12,5
+13,Yunanistan,Super League (GR),14,5
+14,Çekya,Fortuna Liga,16,4
+15,Danimarka,Superliga,12,4
+16,Norveç,Eliteserien,16,4
+17,İsveç,Allsvenskan,16,4
+18,Polonya,Ekstraklasa,18,4
+19,Hırvatistan,HNL,10,4
+20,Sırbistan,SuperLiga,16,4
+21,Romanya,Liga I,16,3
+22,Ukrayna,Premier Liga,16,3
+23,Rusya,Premier Liga (RU),16,4
+24,Macaristan,NB I,12,3
+25,Bulgaristan,efbet Liga,14,3
+26,Kıbrıs,First Division,14,3
+27,İsrail,Ligat ha'Al,14,3
+28,Slovakya,Fortuna Liga (SK),12,3
+29,Slovenya,PrvaLiga,10,2
+30,Finlandiya,Veikkausliiga,12,2
+31,İrlanda,Premier Division,10,2
+32,Kazakistan,Premier League (KZ),12,2
