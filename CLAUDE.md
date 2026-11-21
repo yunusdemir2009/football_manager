@@ -20,7 +20,9 @@ Android için Flutter (Dart) ile yazılan futbol menajerlik oyunu. Dil: Türkçe
 BASE 1.34, HOME 1.12, AWAY 0.90, SPREAD 5.0, FATIGUE 0.12. Hedef: ~2,7 gol/maç, ~%44 ev galibiyeti, ~%24 beraberlik.
 
 ## Durum
-- Kod Claude'un bulut ortamında yazıldı; orada Flutter yoktu, bu yüzden Dart kodu **hiç derlenmedi**. İlk adım: `flutter pub get`, `flutter analyze`, `flutter test`, `flutter run` ve çıkan hataları düzeltmek.
+- Proje derleme ve analiz süreçleri tamamlandı. `flutter pub get`, `flutter analyze` (0 hata/uyarı) ve `flutter test` (5/5 geçti) başarıyla çalışıyor.
+- Platform dosyaları (`android/`, `windows/`) oluşturuldu, `pubspec.yaml` içine `flutter_lints` dev bağımlılığı eklendi ve `withOpacity` kullanımı `withValues` ile güncellendi.
+- Uygulama Android emülatöründe çalıştırıldı; ilk açılış, lig/takım seçimi, canlı maç oynama, transfer/taktik sekmeleri ve kayıtlı oyuna devam etme ("Devam Et") akışı test edilip doğrulandı.
 - Yok: UEFA kupaları (şemada `Competitions` tablosu sadece tanım), sakatlık/kart, AI transferleri, baskı/tempo taktikleri, ikon, ses, UEFA'nın kalan ligleri (32 lig var).
 - Canlı maçta diziliş değiştirilemez (maç öncesi); sadece mentalite + aynı mevkiden değişiklik.
 

@@ -238,9 +238,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _tableTab() {
     final st = g.standings();
     return ListView(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: Row(children: const [
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Row(children: [
           SizedBox(width: 28, child: Text('#')),
           Expanded(child: Text('Takım')),
           SizedBox(width: 28, child: Text('O')),
@@ -251,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const Divider(),
       for (int i = 0; i < st.length; i++)
         Container(
-          color: st[i].teamId == g.teamId ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.35) : null,
+          color: st[i].teamId == g.teamId ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.35) : null,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(children: [
             SizedBox(width: 28, child: Text('${i + 1}')),
