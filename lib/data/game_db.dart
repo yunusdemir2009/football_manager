@@ -35,6 +35,12 @@ class GameDb {
         'id INTEGER PRIMARY KEY, team_id INTEGER, league_id INTEGER, week INTEGER, season INTEGER)');
     await db.execute('CREATE TABLE IF NOT EXISTS Lineup('
         'id INTEGER PRIMARY KEY, formation TEXT, mentality INTEGER, xi TEXT)');
+    await db.execute('CREATE TABLE IF NOT EXISTS PlayerStatus('
+        'player_id INTEGER PRIMARY KEY, injury_weeks INTEGER, ban_weeks INTEGER, yellows INTEGER)');
+    try {
+      // Eski kayitlarda 'press' sutunu yok; varsa hata verir, yok sayilir.
+      await db.execute('ALTER TABLE Lineup ADD COLUMN press INTEGER DEFAULT 1');
+    } catch (_) {}
     await db.execute('CREATE TABLE IF NOT EXISTS Fixtures('
         'id INTEGER PRIMARY KEY AUTOINCREMENT, week INTEGER, home INTEGER, away INTEGER, hg INTEGER, ag INTEGER)');
   }
@@ -61,6 +67,8 @@ class GameDb {
     final r = await db.query('Save', where: 'id = 1');
     return r.isEmpty ? null : r.first;
   }
+
+  Future<List<Map<String, Object?>>> statuses() => db.query('PlayerStatus');
 
   Future<Map<String, Object?>?> loadLineup() async {
     final r = await db.query('Lineup', where: 'id = 1');

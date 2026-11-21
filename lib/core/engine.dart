@@ -12,6 +12,12 @@ class Player {
   final int finishing, passing, tackling, vision, stamina;
   int ca, pa, value, wage;
 
+  // Sezon ici durum (sakatlik/ceza); PlayerStatus tablosunda saklanir
+  int injuryWeeks = 0;
+  int banWeeks = 0;
+  int yellows = 0;
+  bool get available => injuryWeeks <= 0 && banWeeks <= 0;
+
   Player({
     required this.id,
     required this.name,

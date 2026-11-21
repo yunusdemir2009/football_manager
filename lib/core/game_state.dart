@@ -23,14 +23,17 @@ class GameState {
   List<Player> players = [];
   List<Fixture> fixtures = [];
   List<String> lastResults = [];
+  List<String> news = []; // kullanici takimi icin haber kutusu
 
   // Taktik
   Formation formation = kFormations.first;
   Mentality mentality = Mentality.balanced;
+  Pressing pressing = Pressing.normal;
   List<int> xiIds = [];
 
   // Hafta durumu
   final Map<int, (int, int)> _pending = {};
+  final List<MatchSession> _sessions = [];
   MatchSession? live;
 
   GameState._(this.gdb, this.teamId, this.leagueId, this.week, this.season);
@@ -60,6 +63,8 @@ class GameState {
       s.formation = formationByName((l['formation'] as String?) ?? '4-4-2');
       final mi = (l['mentality'] as int?) ?? 1;
       s.mentality = Mentality.values[mi.clamp(0, Mentality.values.length - 1).toInt()];
+      final pressIdx = (l['press'] as int?) ?? 1;
+      s.pressing = Pressing.values[pressIdx.clamp(0, Pressing.values.length - 1).toInt()];
       final raw = (l['xi'] as String?) ?? '';
       s.xiIds = raw.isEmpty ? [] : raw.split(',').map(int.parse).toList();
     }
@@ -72,6 +77,14 @@ class GameState {
         .map((r) => Team(r['id'] as int, r['name'] as String, r['league_id'] as int, r['budget'] as int))
         .toList();
     players = (await gdb.playersOfLeague(leagueId)).map(Player.fromMap).toList();
+    final byId = {for (final p in players) p.id: p};
+    for (final r in await gdb.statuses()) {
+      final p = byId[r['player_id'] as int];
+      if (p == null) continue;
+      p.injuryWeeks = (r['injury_weeks'] as int?) ?? 0;
+      p.banWeeks = (r['ban_weeks'] as int?) ?? 0;
+      p.yellows = (r['yellows'] as int?) ?? 0;
+    }
   }
 
   Future<void> _generateFixtures() async {
@@ -95,7 +108,7 @@ class GameState {
 
   Future<void> _saveTactic() => gdb.db.insert(
         'Lineup',
-        {'id': 1, 'formation': formation.name, 'mentality': mentality.index, 'xi': xiIds.join(',')},
+        {'id': 1, 'formation': formation.name, 'mentality': mentality.index, 'press': pressing.index, 'xi': xiIds.join(',')},
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
 
@@ -128,13 +141,25 @@ class GameState {
 
   List<Player> get myBench => autoBench(squad(teamId), myXI);
 
-  /// Ilk 11 gecersizse (oyuncu satildi, dizilis uymuyor) otomatik duzelt.
+  /// Ilk 11 gecersizse (oyuncu satildi, dizilis uymuyor) otomatik duzelt; sakat/cezali oyunculari degistir.
   void ensureLineup({bool forceAuto = false}) {
     final sq = squad(teamId);
-    final xi = myXI;
-    if (forceAuto || !lineupValid(xi, formation)) {
+    if (forceAuto || !lineupValid(myXI, formation)) {
       xiIds = autoXI(sq, formation).map((p) => p.id).toList();
+      return;
     }
+    final byId = {for (final p in sq) p.id: p};
+    final ids = [...xiIds];
+    for (var i = 0; i < ids.length; i++) {
+      final cur = byId[ids[i]];
+      if (cur == null || cur.available) continue;
+      Player? best;
+      for (final c in sq) {
+        if (c.grp == cur.grp && c.available && !ids.contains(c.id) && (best == null || c.ca > best.ca)) best = c;
+      }
+      if (best != null) ids[i] = best.id;
+    }
+    xiIds = ids;
   }
 
   Future<void> setFormation(Formation f) async {
@@ -148,9 +173,15 @@ class GameState {
     await _saveTactic();
   }
 
+  Future<void> setPressing(Pressing p) async {
+    pressing = p;
+    await _saveTactic();
+  }
+
   /// Ilk 11'de ayni mevkiden oyuncu degistir.
   Future<String?> swapStarter(Player out, Player inn) async {
     if (out.grp != inn.grp) return 'Aynı mevkiden oyuncu seçin';
+    if (!inn.available) return '${inn.name} sakat ya da cezalı';
     final i = xiIds.indexOf(out.id);
     if (i < 0) return 'Oyuncu ilk 11\'de değil';
     xiIds[i] = inn.id;
@@ -171,6 +202,7 @@ class GameState {
       isUser: true,
       formation: formation,
       mentality: mentality,
+      pressing: pressing,
       xi: [...xi],
       bench: [...autoBench(squad(teamId), xi)],
     );
@@ -186,6 +218,7 @@ class GameState {
       isUser: false,
       formation: f,
       mentality: Mentality.balanced,
+      pressing: Pressing.values[(t.id * 5) % Pressing.values.length],
       xi: xi,
       bench: autoBench(sq, xi),
     );
@@ -201,12 +234,14 @@ class GameState {
     final avgDef = base.values.fold<double>(0, (a, r) => a + r.def) / base.length;
 
     _pending.clear();
+    _sessions.clear();
     live = null;
     for (final f in fixturesOfWeek(week)) {
       final mine = f.home == teamId || f.away == teamId;
       final home = f.home == teamId ? _userSide() : _aiSide(team(f.home));
       final away = f.away == teamId ? _userSide() : _aiSide(team(f.away));
       final session = MatchSession(rng: rng, home: home, away: away, avgAtt: avgAtt, avgDef: avgDef);
+      _sessions.add(session);
       if (mine) {
         live = session;
       } else {
@@ -252,12 +287,90 @@ class GameState {
     }
     myTeam.budget += net;
     batch.update('Teams', {'budget': myTeam.budget}, where: 'id = ?', whereArgs: [teamId]);
+    _applyIncidents(batch);
     week++;
     live = null;
     _pending.clear();
+    _sessions.clear();
     await batch.commit(noResult: true);
+    ensureLineup();
+    await _saveTactic();
     await _saveMeta();
   }
+
+  /// Sakatlik/ceza/sari kart olaylarini oyunculara isler (haftalik azaltma + yeni olaylar).
+  void _applyIncidents(Batch batch) {
+    news = [];
+    final changed = <Player>{};
+    final byId = {for (final p in players) p.id: p};
+    bool mineP(Player p) => p.teamId == teamId;
+
+    for (final p in players) {
+      if (p.injuryWeeks > 0) {
+        p.injuryWeeks--;
+        changed.add(p);
+        if (p.injuryWeeks == 0 && mineP(p)) news.add('✅ ${p.name} sakatlıktan döndü.');
+      }
+      if (p.banWeeks > 0) {
+        p.banWeeks--;
+        changed.add(p);
+        if (p.banWeeks == 0 && mineP(p)) news.add('✅ ${p.name} cezasını tamamladı.');
+      }
+    }
+    for (final s in _sessions) {
+      s.injuries.forEach((id, w) {
+        final p = byId[id];
+        if (p == null) return;
+        p.injuryWeeks = w;
+        changed.add(p);
+        if (mineP(p)) news.add('🩹 ${p.name} sakatlandı: $w hafta yok.');
+      });
+      s.bans.forEach((id, w) {
+        final p = byId[id];
+        if (p == null) return;
+        p.banWeeks = max(p.banWeeks, w);
+        changed.add(p);
+        if (mineP(p)) news.add('🟥 ${p.name} kırmızı kart gördü: $w maç cezalı.');
+      });
+      s.yellowsGiven.forEach((id, c) {
+        final p = byId[id];
+        if (p == null) return;
+        p.yellows += c;
+        changed.add(p);
+        if (p.yellows >= 5) {
+          p.yellows -= 5;
+          p.banWeeks = max(p.banWeeks, 1);
+          if (mineP(p)) news.add('🟨 ${p.name} 5. sarı kartını gördü: 1 maç cezalı.');
+        }
+      });
+    }
+    for (final p in changed) {
+      batch.insert(
+        'PlayerStatus',
+        {'player_id': p.id, 'injury_weeks': p.injuryWeeks, 'ban_weeks': p.banWeeks, 'yellows': p.yellows},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  /// Son 5 oynanmis maci (en yeni sonda) W/D/L olarak dondurur.
+  List<String> formOf(int tid) {
+    final played = fixtures.where((f) => f.played && (f.home == tid || f.away == tid)).toList()
+      ..sort((a, b) => a.week.compareTo(b.week));
+    final last = played.length > 5 ? played.sublist(played.length - 5) : played;
+    return last.map((f) {
+      final my = f.home == tid ? f.hg! : f.ag!;
+      final opp = f.home == tid ? f.ag! : f.hg!;
+      return my > opp ? 'W' : my == opp ? 'D' : 'L';
+    }).toList();
+  }
+
+  /// Kullanici takiminin sonraki n maci.
+  List<Fixture> upcoming(int n) =>
+      (fixtures.where((f) => !f.played && (f.home == teamId || f.away == teamId)).toList()
+            ..sort((a, b) => a.week.compareTo(b.week)))
+          .take(n)
+          .toList();
 
   /// Hizli simulasyon: canli izlemeden, kayitli taktikle haftayi oynar.
   Future<void> quickPlayWeek() async {
@@ -342,6 +455,13 @@ class GameState {
           where: 'id = ?', whereArgs: [p.id]);
     }
     await b.commit(noResult: true);
+    for (final p in players) {
+      p.injuryWeeks = 0;
+      p.banWeeks = 0;
+      p.yellows = 0;
+    }
+    await gdb.db.delete('PlayerStatus');
+    news = [];
     season++;
     week = 1;
     lastResults = [];

@@ -5,6 +5,7 @@ import '../core/game_state.dart';
 import '../core/match.dart';
 import '../data/game_db.dart';
 import 'live_match.dart';
+import 'widgets.dart';
 
 String money(int v) {
   final a = v.abs();
@@ -209,8 +210,27 @@ class _HomeScreenState extends State<HomeScreen> {
         const Text('Bu hafta maçınız yok (bay).')
       else
         Card(
-          child: ListTile(
-            title: Text('${g.teamName(next.home)}  –  ${g.teamName(next.away)}', textAlign: TextAlign.center),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Expanded(
+                child: Column(children: [
+                  TeamBadge(name: g.teamName(next.home), size: 44),
+                  const SizedBox(height: 6),
+                  Text(g.teamName(next.home), textAlign: TextAlign.center),
+                  FormDots(form: g.formOf(next.home)),
+                ]),
+              ),
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('VS')),
+              Expanded(
+                child: Column(children: [
+                  TeamBadge(name: g.teamName(next.away), size: 44),
+                  const SizedBox(height: 6),
+                  Text(g.teamName(next.away), textAlign: TextAlign.center),
+                  FormDots(form: g.formOf(next.away)),
+                ]),
+              ),
+            ]),
           ),
         ),
       const SizedBox(height: 12),
@@ -226,6 +246,26 @@ class _HomeScreenState extends State<HomeScreen> {
         label: const Text('Hızlı Simüle'),
       ),
       const SizedBox(height: 20),
+      if (g.news.isNotEmpty) ...[
+        Text('Haberler', style: Theme.of(context).textTheme.titleMedium),
+        const Divider(),
+        ...g.news.map((n) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text(n))),
+        const SizedBox(height: 16),
+      ],
+      Builder(builder: (context) {
+        final up = g.upcoming(6);
+        if (up.length <= 1) return const SizedBox.shrink();
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Yaklaşan maçlar', style: Theme.of(context).textTheme.titleMedium),
+          const Divider(),
+          for (final f in up.skip(1))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Text('Hafta ${f.week}:  ${g.teamName(f.home)} – ${g.teamName(f.away)}'),
+            ),
+          const SizedBox(height: 16),
+        ]);
+      }),
       if (g.lastResults.isNotEmpty) ...[
         Text('Son hafta sonuçları', style: Theme.of(context).textTheme.titleMedium),
         const Divider(),
@@ -241,7 +281,8 @@ class _HomeScreenState extends State<HomeScreen> {
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         child: Row(children: const [
-          SizedBox(width: 28, child: Text('#')),
+          SizedBox(width: 24, child: Text('#')),
+          SizedBox(width: 32),
           Expanded(child: Text('Takım')),
           SizedBox(width: 28, child: Text('O')),
           SizedBox(width: 38, child: Text('AV')),
@@ -254,8 +295,15 @@ class _HomeScreenState extends State<HomeScreen> {
           color: st[i].teamId == g.teamId ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.35) : null,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(children: [
-            SizedBox(width: 28, child: Text('${i + 1}')),
-            Expanded(child: Text(g.teamName(st[i].teamId), overflow: TextOverflow.ellipsis)),
+            SizedBox(width: 24, child: Text('${i + 1}')),
+            TeamBadge(name: g.teamName(st[i].teamId), size: 24),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(g.teamName(st[i].teamId), overflow: TextOverflow.ellipsis),
+                FormDots(form: g.formOf(st[i].teamId)),
+              ]),
+            ),
             SizedBox(width: 28, child: Text('${st[i].played}')),
             SizedBox(width: 38, child: Text('${st[i].gd}')),
             SizedBox(width: 32, child: Text('${st[i].points}', style: const TextStyle(fontWeight: FontWeight.bold))),
@@ -268,7 +316,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _pickStarter(Player out) async {
     final xiIds = g.myXI.map((p) => p.id).toSet();
     final cands = g.squad(g.teamId).where((p) => p.grp == out.grp && !xiIds.contains(p.id)).toList()
-      ..sort((a, b) => b.ca.compareTo(a.ca));
+      ..sort((a, b) {
+        final c = (b.available ? 1 : 0).compareTo(a.available ? 1 : 0);
+        return c != 0 ? c : b.ca.compareTo(a.ca);
+      });
     final picked = await showModalBottomSheet<Player>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -279,7 +330,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ListTile(
               dense: true,
               title: Text(p.name),
-              subtitle: Text('${p.position} • ${p.age} yaş • Kond. ${p.stamina}'),
+              subtitle: Text('${p.position} • ${p.age} yaş • Kond. ${p.stamina}${_statusText(p)}'),
               trailing: Text('${p.ca}', style: const TextStyle(fontWeight: FontWeight.bold)),
               onTap: () => Navigator.of(ctx).pop(p),
             ),
@@ -287,8 +338,17 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (picked == null) return;
-    await g.swapStarter(out, picked);
-    if (mounted) setState(() {});
+    final err = await g.swapStarter(out, picked);
+    if (!mounted) return;
+    if (err != null) snack(context, err);
+    setState(() {});
+  }
+
+  String _statusText(Player p) {
+    if (p.injuryWeeks > 0) return '  🩹 sakat (${p.injuryWeeks} hf)';
+    if (p.banWeeks > 0) return '  🟥 cezalı (${p.banWeeks} maç)';
+    if (p.yellows > 0) return '  🟨 ${p.yellows}';
+    return '';
   }
 
   Widget _tacticTab() {
@@ -305,7 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
           dense: true,
           leading: CircleAvatar(radius: 16, child: Text(p.grp, style: const TextStyle(fontSize: 10))),
           title: Text(p.name),
-          subtitle: Text('${p.position} • ${p.age} yaş • Kond. ${p.stamina}'),
+          subtitle: Text('${p.position} • ${p.age} yaş • Kond. ${p.stamina}${_statusText(p)}'),
           trailing: Text('${p.ca}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           onTap: tappable ? () => _pickStarter(p) : null,
         );
@@ -341,6 +401,17 @@ class _HomeScreenState extends State<HomeScreen> {
           selected: {g.mentality},
           onSelectionChanged: (v) async {
             await g.setMentality(v.first);
+            if (mounted) setState(() {});
+          },
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: SegmentedButton<Pressing>(
+          segments: [for (final p in Pressing.values) ButtonSegment(value: p, label: Text(p.label))],
+          selected: {g.pressing},
+          onSelectionChanged: (v) async {
+            await g.setPressing(v.first);
             if (mounted) setState(() {});
           },
         ),

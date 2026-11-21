@@ -114,4 +114,48 @@ void main() {
     }
     expect(goals / n, inInclusiveRange(2.0, 3.6));
   });
+
+  test('sakat oyuncu ilk 11 ve yedeklerde tercih edilmez', () {
+    final sq = _squad();
+    final f = kFormations.first;
+    final best = sq.where((p) => p.grp == 'DEF').reduce((a, b) => a.ca >= b.ca ? a : b);
+    best.injuryWeeks = 3;
+    final xi = autoXI(sq, f);
+    expect(xi.any((p) => p.id == best.id), isFalse);
+    expect(lineupValid(xi, f), isTrue);
+    expect(autoBench(sq, xi).any((p) => p.id == best.id), isFalse);
+  });
+
+  test('maç istatistikleri makul: şut, kart, sakatlık', () {
+    final sq = _squad();
+    final f = kFormations.first;
+    final xi = autoXI(sq, f);
+    final base = baselineRating(sq);
+    final rng = Random(11);
+    const n = 300;
+    var shots = 0, yellows = 0, reds = 0, injuries = 0;
+    for (var i = 0; i < n; i++) {
+      MatchSide side(bool u) => MatchSide(
+          teamId: 1,
+          teamName: 'A',
+          isUser: u,
+          formation: f,
+          mentality: Mentality.balanced,
+          xi: [...xi],
+          bench: autoBench(sq, xi));
+      final s = MatchSession(rng: rng, home: side(false), away: side(false), avgAtt: base.att, avgDef: base.def)
+        ..autoAll = true;
+      s.simulateToEnd();
+      expect(s.home.xi.length, inInclusiveRange(7, 11));
+      expect(s.home.onTarget, lessThanOrEqualTo(s.home.shots));
+      shots += s.home.shots + s.away.shots;
+      yellows += s.home.yellows + s.away.yellows;
+      reds += s.home.reds + s.away.reds;
+      injuries += s.injuries.length;
+    }
+    expect(shots / n, inInclusiveRange(15, 40));
+    expect(yellows / n, inInclusiveRange(1, 9));
+    expect(reds / n, lessThan(0.7));
+    expect(injuries / n, lessThan(0.5));
+  });
 }
